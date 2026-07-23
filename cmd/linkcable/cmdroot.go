@@ -60,8 +60,9 @@ func version() string {
 
 func runLinkcable(cmd *cobra.Command, _ []string) error {
 	slog.Info("linkcable Docker network driver plugin",
+		slog.String("version", cmd.Version),
 		slog.String("license", "Apache 2.0"),
-		slog.String("web", "https://github.com/thediveo/linkcable")) // TODO: version
+		slog.String("web", "https://github.com/thediveo/linkcable"))
 
 	lcdriver, err := driver.NewDriver("linkcable")
 	if err != nil {
