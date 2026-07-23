@@ -40,7 +40,10 @@ func NewDriver(name string) (*Driver, error) {
 }
 
 func (*Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
-	return nil, errors.New("not implemented")
+	return &network.CapabilitiesResponse{
+		Scope:             network.LocalScope,
+		ConnectivityScope: network.LocalScope,
+	}, nil
 }
 func (*Driver) CreateNetwork(*network.CreateNetworkRequest) error {
 	return errors.New("not implemented")
