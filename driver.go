@@ -127,12 +127,26 @@ func (*Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 	}, nil
 }
 
-func (*Driver) CreateNetwork(*network.CreateNetworkRequest) error {
-
+func (d *Driver) CreateNetwork(req *network.CreateNetworkRequest) error {
+	if n := d.getNetwork(req.NetworkID); n != nil {
+		return fmt.Errorf("network already exists with ID=%q", req.NetworkID)
+	}
+	n := &Network{
+		cfg: NetworkConfiguration{
+			ID: req.NetworkID,
+		},
+	}
+	d.addNetwork(n)
+	return nil
 }
 
-func (*Driver) DeleteNetwork(*network.DeleteNetworkRequest) error {
-	return errors.New("not implemented")
+func (d *Driver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
+	n := d.getNetwork(req.NetworkID)
+	if n == nil {
+		return nil // stay silent in case of a non-existing network.
+	}
+	d.deleteNetwork(n.cfg.ID)
+	return nil
 }
 
 func (*Driver) AllocateNetwork(*network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {

@@ -15,7 +15,10 @@
 package linkcable
 
 import (
+	"fmt"
 	"sync"
+
+	"github.com/moby/moby/v2/daemon/libnetwork/datastore"
 )
 
 // NetworksByID maps Docker network IDs to our network configuration and
@@ -32,7 +35,41 @@ type Network struct {
 	endpoints []Endpoint
 }
 
-// addNetwork adds the passed network configuration
-func (d *Driver) addNetwork() error {
+var _ Storable = (*Network)(nil)
 
+// Persist writes the configuration of the passed network into the data store.
+func (n *Network) Persist(store *datastore.Store) error {
+	n.m.RLock()
+	defer n.m.RUnlock()
+	if err := store.PutObjectAtomic(&n.cfg); err != nil {
+		return fmt.Errorf("cannot update network (ID=%q) configuration in data store, reason: %w",
+			abbreviate(n.cfg.ID), err)
+	}
+	return nil
+}
+
+// Cease wipes the configuration of the passed network from the data store.
+func (n *Network) Cease(store *datastore.Store) error {
+	n.m.RLock()
+	defer n.m.RUnlock()
+	for attempt := 0; attempt < 10; attempt++ {
+		switch err := store.DeleteObjectAtomic(&n.cfg); err {
+		case nil:
+			return nil
+		case datastore.ErrKeyModified:
+			var updatedNetwork NetworkConfiguration
+			n.cfg.CopyTo(&updatedNetwork)
+			if err := store.GetObject(&updatedNetwork); err != nil {
+				return fmt.Errorf("cannot refresh network (ID=%q) configuration in order to delete; reason: %w",
+					err)
+			}
+			updatedNetwork.CopyTo(&n.cfg)
+			continue
+		default:
+			return fmt.Errorf("cannot remove network (ID=%q) configuration from data store, reason: %w",
+				abbreviate(n.cfg.ID), err)
+		}
+	}
+	return fmt.Errorf("too many failed attempts to remove network (ID=%q) configuration from data store",
+		abbreviate(n.cfg.ID))
 }

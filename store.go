@@ -28,23 +28,28 @@ const (
 	KVEndpointPrefix = KVPrefix + "endpoint"
 )
 
-// storeUpdate writes the passed network configuration into the persistence data
-// store.
-func (d *Driver) storeUpdate(n *Network) error {
-	n.m.RLock()
-	defer n.m.RUnlock()
-	if err := d.store.PutObjectAtomic(&n.cfg); err != nil {
-		return fmt.Errorf("cannot update network configuration (ID=%q) in data store, reason: %w",
-			n.cfg.ID, err)
-	}
-	return nil
+type Storable interface {
+	Persist(store *datastore.Store) error
+	Cease(store *datastore.Store) error
 }
 
-func (d *Driver) storeDelete(n *Network) error {
-	if d.store == nil {
-		return nil
-	}
-	return nil // FIXME:
+func (d *Driver) getNetwork(id string) *Network {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	return d.networks[id]
+}
+
+// addNetwork adds the passed network configuration
+func (d *Driver) addNetwork(n *Network) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	d.networks[n.cfg.ID] = n
+}
+
+func (d *Driver) deleteNetwork(id string) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	delete(d.networks, id)
 }
 
 // restoreNetworks restores the in-memory plugin state from the persistent
@@ -64,7 +69,7 @@ func (d *Driver) restoreNetworks(tabluarasa bool) error {
 		if tabluarasa {
 			slog.Warn("forgetting network configuration",
 				slog.String("id", network.cfg.ID))
-			if err := d.storeDelete(network); err != nil {
+			if err := network.Cease(d.store); err != nil {
 				slog.Error("cannot delete network configuration from data store",
 					slog.String("id", network.cfg.ID),
 					xslog.Error(err))
