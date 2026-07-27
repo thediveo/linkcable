@@ -133,10 +133,12 @@ func (d *Driver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	}
 	n := &Network{
 		cfg: NetworkConfiguration{
-			ID: req.NetworkID,
+			ID:      req.NetworkID,
+			IPAMsv4: req.IPv4Data,
+			IPAMsv6: req.IPv6Data,
 		},
 	}
-	d.addNetwork(n)
+	d.addPersistNetwork(n)
 	return nil
 }
 
@@ -145,7 +147,7 @@ func (d *Driver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
 	if n == nil {
 		return nil // stay silent in case of a non-existing network.
 	}
-	d.deleteNetwork(n.cfg.ID)
+	d.deleteCeaseNetwork(n.cfg.ID)
 	return nil
 }
 

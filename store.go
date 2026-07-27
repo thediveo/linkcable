@@ -39,16 +39,24 @@ func (d *Driver) getNetwork(id string) *Network {
 	return d.networks[id]
 }
 
-// addNetwork adds the passed network configuration
-func (d *Driver) addNetwork(n *Network) {
+// addPersistNetwork adds the passed network configuration and persists it.
+func (d *Driver) addPersistNetwork(n *Network) {
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.networks[n.cfg.ID] = n
 }
 
-func (d *Driver) deleteNetwork(id string) {
+func (d *Driver) deleteCeaseNetwork(id string) {
 	d.m.Lock()
 	defer d.m.Unlock()
+	n := d.networks[id]
+	if n == nil {
+		return
+	}
+	if err := n.Cease(d.store); err != nil {
+		slog.Error("cannot remove network config from data store",
+			xslog.Error(err))
+	}
 	delete(d.networks, id)
 }
 
