@@ -15,16 +15,16 @@
 package linkcable
 
 import (
-	"errors"
 	"sync"
-
-	"github.com/docker/go-plugins-helpers/network"
 )
 
 // NetworksByID maps Docker network IDs to our network configuration and
 // endpoint state information.
 type NetworksByID map[string]*Network
 
+// Network represents a (custom) Docker network managed by our driver: it stores
+// both the persistent configuration data as well as purely in-memory state
+// information.
 type Network struct {
 	cfg NetworkConfiguration
 
@@ -32,10 +32,7 @@ type Network struct {
 	endpoints []Endpoint
 }
 
-func (*Driver) CreateNetwork(*network.CreateNetworkRequest) error {
-	return errors.New("not implemented")
-}
+// addNetwork adds the passed network configuration
+func (d *Driver) addNetwork() error {
 
-func (*Driver) DeleteNetwork(*network.DeleteNetworkRequest) error {
-	return errors.New("not implemented")
 }

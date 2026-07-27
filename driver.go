@@ -16,7 +16,9 @@ package linkcable
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sync"
 
 	"github.com/docker/go-plugins-helpers/network"
@@ -42,13 +44,13 @@ type Driver struct {
 	// operations in that network namespace. We will be placing the primary
 	// netkit interfaces there so they do their packet forwarding in splendid
 	// isolation.
-	privyhdl netlink.Handle
+	privyhdl *netlink.Handle
 	// netlink handle/connection to the "host", or rather: current, network
 	// namespace to carry out operations in that network namespace. We will be
 	// placing the peer netkit interfaces there so that libnetwork can handle
 	// them; yeah, this is an unfortunate architectural shortcoming of
 	// libnetwork.
-	hosthdl netlink.Handle
+	hosthdl *netlink.Handle
 
 	m        sync.RWMutex
 	networks NetworksByID
@@ -63,43 +65,57 @@ func NewDriver(name string, tabularasa bool) (*Driver, error) {
 		dbPath += "-" + name
 		privynetnsPath += "-" + name
 	}
-	dbPath += "-db.kv"
 	slog.Info("persistent driver configuration", slog.String("path", dbPath))
 	slog.Info("privy network namespace reference", slog.String("path", privynetnsPath))
-	privynetnsfd, err := privy.BindmountedNetns(privynetnsPath)
-	if err != nil {
-		return nil, err
-	}
 
-	privyhdl, err := netlink.NewHandleAt(netns.NsHandle(privynetnsfd))
+	store, err := datastore.New(dbPath, "linkcable")
 	if err != nil {
-		_ = privyhdl.Close()
-		_ = unix.Close(privynetnsfd)
-		return nil, err
+		return nil, fmt.Errorf("cannot create or reuse boltdb store %q, reason: %w",
+			filepath.Join(dbPath, "local-kv.db"), // mirrors datastore.New behavior
+			err)
 	}
-
-	hosthdl, err := netlink.NewHandle()
-	if err != nil {
-		_ = hosthdl.Close()
-		_ = privyhdl.Close()
-		_ = unix.Close(privynetnsfd)
-		return nil, err
-	}
-
 	d := &Driver{
-		name:         name,
-		privynetnsfd: privynetnsfd,
-		privyhdl:     *privyhdl,
-		hosthdl:      *hosthdl,
+		name:  name,
+		store: store,
+	}
+
+	d.privynetnsfd, err = privy.BindmountedNetns(privynetnsPath)
+	if err != nil {
+		_ = d.Close()
+		return nil, err
+	}
+
+	d.privyhdl, err = netlink.NewHandleAt(netns.NsHandle(d.privynetnsfd))
+	if err != nil {
+		_ = d.Close()
+		return nil, err
+	}
+
+	d.hosthdl, err = netlink.NewHandle()
+	if err != nil {
+		_ = d.Close()
+		return nil, err
+	}
+
+	if err := d.restoreNetworks(tabularasa); err != nil {
+		_ = d.Close()
+		return nil, err
 	}
 	return d, nil
 }
 
 func (d *Driver) Close() error {
-	_ = d.hosthdl.Close()
-	_ = d.privyhdl.Close()
+	if d.hosthdl != nil {
+		_ = d.hosthdl.Close()
+	}
+	if d.privyhdl != nil {
+		_ = d.privyhdl.Close()
+	}
 	if d.privynetnsfd > 0 {
 		_ = unix.Close(d.privynetnsfd)
+	}
+	if d.store != nil {
+		d.store.Close()
 	}
 	return nil
 }
@@ -110,6 +126,15 @@ func (*Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 		ConnectivityScope: network.LocalScope,
 	}, nil
 }
+
+func (*Driver) CreateNetwork(*network.CreateNetworkRequest) error {
+
+}
+
+func (*Driver) DeleteNetwork(*network.DeleteNetworkRequest) error {
+	return errors.New("not implemented")
+}
+
 func (*Driver) AllocateNetwork(*network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
 	return nil, errors.New("not implemented")
 }
